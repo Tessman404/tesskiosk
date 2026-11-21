@@ -1,3 +1,6 @@
+## 0.2.3
+- Souris, clavier et tactile reconnus par l'affichage (udev).
+
 ## 0.2.2
 - Journal plus détaillé en cas d'arrêt.
 

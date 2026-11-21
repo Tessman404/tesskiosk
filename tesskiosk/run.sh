@@ -57,7 +57,11 @@ for c in /usr/lib/systemd/systemd-udevd /lib/systemd/systemd-udevd "$(command -v
 done
 if [ -n "$UDEVD" ]; then
     if "$UDEVD" --daemon; then
-        udevadm trigger >/dev/null 2>&1 || true   # some sysfs entries are read-only: harmless
+        # sysfs is read-only in the container: make it writable so udev can (re)announce
+        # the input devices (needed for mouse / keyboard / touch screen in the display)
+        mount -o remount,rw /sys 2>/dev/null || bashio::log.warning "sysfs reste en lecture seule"
+        udevadm trigger --action=add --subsystem-match=input >/dev/null 2>&1 || true
+        udevadm trigger --action=add --subsystem-match=hidraw >/dev/null 2>&1 || true
         udevadm settle --timeout=10 || true
     else
         bashio::log.warning "udev n'a pas démarré (tactile/souris possiblement absents)"
