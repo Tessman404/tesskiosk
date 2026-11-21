@@ -1,3 +1,6 @@
+## 0.2.2
+- Journal plus détaillé en cas d'arrêt.
+
 ## 0.2.1
 - Souris, clavier et tactile : initialisation des périphériques d'entrée corrigée.
 

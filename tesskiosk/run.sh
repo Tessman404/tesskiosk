@@ -15,7 +15,14 @@ cleanup() {
     [ -n "$TTY0_DELETED" ] && [ ! -e /dev/tty0 ] && mknod -m 620 /dev/tty0 c 4 0
     exit 0
 }
-trap cleanup HUP INT QUIT TERM
+trap cleanup INT QUIT TERM
+trap '' HUP
+on_exit() {
+    local rc=$?
+    echo "[TessKiosk] sortie du script (code $rc, ligne ${BASH_LINENO[0]:-?})"
+    [ -f /tmp/xorg.out ] && { echo "--- fin du journal de l'affichage ---"; tail -n 25 /tmp/xorg.out; }
+}
+trap on_exit EXIT
 
 #------------------------------------------------------------------- options --
 export HA_USERNAME="$(bashio::config 'ha_username')"
@@ -131,7 +138,7 @@ SCREEN_W=${SCREEN_W:-1920}; SCREEN_H=${SCREEN_H:-1080}
 bashio::log.info "Écran : $OUTPUT ${SCREEN_W}x${SCREEN_H} (rotation $ROTATE)"
 
 bashio::log.info "Entrées vues par l'affichage :"
-xinput list --name-only 2>/dev/null | grep -v -i "virtual core\|xtest" | sed 's/^/  - /'
+{ xinput list --short 2>&1 || true; } | sed 's/^/  /' || true
 
 # Map touch screens onto the output
 while IFS= read -r id; do
