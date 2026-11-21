@@ -1,3 +1,6 @@
+## 0.4.2
+- Polices Roboto / Liberation : les pages des extensions (Tessbet…) s'affichent comme sur Mac/Windows.
+
 ## 0.4.1
 - Retour à l'accueil : l'activité dans les pages des extensions (Tessbet, Tessfood…) compte aussi.
 

@@ -38,6 +38,8 @@ RUN apk update && apk add --no-cache \
       bluez \
       chromium \
       ttf-dejavu \
+      font-roboto \
+      font-liberation \
       font-noto-emoji \
       icu-data-full \
       bash \
@@ -47,6 +49,7 @@ RUN apk update && apk add --no-cache \
  && rm -rf /var/cache/apk/*
 
 COPY xorg.conf /etc/X11/xorg.conf.tesskiosk
+COPY fonts.conf /etc/fonts/local.conf
 COPY run.sh kiosk.py bt.py /
 RUN chmod a+x /run.sh
 
