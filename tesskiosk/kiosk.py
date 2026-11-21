@@ -191,6 +191,30 @@ def ensure_session(force_login=False):
     return with_page(run)
 
 
+def log_gpu():
+    """Log whether Chromium really uses the GPU (compositing, raster, video)."""
+    try:
+        _, ver = http("GET", f"{CDP}/json/version", timeout=3)
+        ws = websocket.create_connection(ver["webSocketDebuggerUrl"], timeout=20, suppress_origin=True,
+                                         http_no_proxy=["127.0.0.1", "localhost"])
+        ws.send(json.dumps({"id": 1, "method": "SystemInfo.getInfo"}))
+        while True:
+            msg = json.loads(ws.recv())
+            if msg.get("id") == 1:
+                break
+        ws.close()
+        gpu = msg.get("result", {}).get("gpu", {})
+        fs = gpu.get("featureStatus", {})
+        keys = ("gpu_compositing", "rasterization", "video_decode", "webgl", "opengl", "skia_graphite")
+        log("Puce graphique dans Chrome : " + ", ".join(f"{k}={fs.get(k)}" for k in keys if k in fs))
+        dev = (gpu.get("devices") or [{}])[0]
+        log(f"  carte : {dev.get('vendorString') or dev.get('vendorId')} / {dev.get('deviceString') or dev.get('deviceId')} pilote {dev.get('driverVendor', '')} {dev.get('driverVersion', '')}")
+        for p in (gpu.get("driverBugWorkarounds") or [])[:0]:
+            pass
+    except Exception as e:
+        log(f"Infos puce graphique indisponibles : {e}")
+
+
 def needs_login(url):
     return (not url or "/auth/authorize" in url or url.startswith("chrome-error")
             or url.startswith("about:") or url.endswith("/manifest.json"))
@@ -290,6 +314,7 @@ def main():
         except Exception as e:
             log(f"Ouverture de session impossible (essai {attempt}/5) : {e}")
             time.sleep(10)
+    log_gpu()
     threading.Thread(target=watchdog, daemon=True).start()
     server = ThreadingHTTPServer(("127.0.0.1", API_PORT), Api)
     log(f"API locale : http://127.0.0.1:{API_PORT}")

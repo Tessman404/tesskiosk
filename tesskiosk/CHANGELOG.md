@@ -1,3 +1,6 @@
+## 0.3.1
+- Journal : utilisation de la puce graphique par Chrome.
+
 ## 0.3.0
 - Base Alpine (comme HAOS Kiosk) : souris, clavier et tactile détectés.
 - Le script ne s'arrête plus sur une erreur mineure.

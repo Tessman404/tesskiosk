@@ -141,10 +141,6 @@ bashio::log.info "Écran : $OUTPUT ${SCREEN_W}x${SCREEN_H} (rotation $ROTATE)"
 bashio::log.info "Entrées vues par l'affichage :"
 { xinput list --short 2>&1 || true; } | sed 's/^/  /' || true
 
-if ! xinput list --short 2>/dev/null | grep -v -i "virtual core\|xtest" | grep -qi "pointer\|keyboard"; then
-    bashio::log.info "Aucune souris/clavier/tactile vu par l'affichage pour l'instant"
-fi
-
 # Map touch screens onto the output
 while IFS= read -r id; do
     name=$(xinput list --name-only "$id" 2>/dev/null)
