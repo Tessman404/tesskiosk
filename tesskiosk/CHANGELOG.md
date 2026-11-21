@@ -1,3 +1,7 @@
+## 0.3.0
+- Base Alpine (comme HAOS Kiosk) : souris, clavier et tactile détectés.
+- Le script ne s'arrête plus sur une erreur mineure.
+
 ## 0.2.4
 - Diagnostic des périphériques d'entrée.
 

@@ -4,6 +4,7 @@
 # TessKiosk — start X, then Chromium in kiosk mode, then the session manager.
 # X start-up logic adapted from HAOS Kiosk Display (Jeff Kosowsky, GPL-2.0).
 ################################################################################
+set +e          # never stop on a minor error (bashio enables errexit)
 set -uo pipefail
 
 bashio::log.info "######## TessKiosk ${ADDON_VERSION:-dev} ########"
@@ -52,16 +53,12 @@ export DBUS_SESSION_BUS_ADDRESS
 
 #---------------------------------------------------------------------- udev --
 UDEVD=""
-for c in /usr/lib/systemd/systemd-udevd /lib/systemd/systemd-udevd "$(command -v udevd 2>/dev/null)"; do
+for c in "$(command -v udevd 2>/dev/null)" /sbin/udevd /usr/lib/systemd/systemd-udevd; do
     [ -n "$c" ] && [ -x "$c" ] && UDEVD="$c" && break
 done
 if [ -n "$UDEVD" ]; then
     if "$UDEVD" --daemon; then
-        # sysfs is read-only in the container: make it writable so udev can (re)announce
-        # the input devices (needed for mouse / keyboard / touch screen in the display)
-        mount -o remount,rw /sys 2>/dev/null || bashio::log.warning "sysfs reste en lecture seule"
-        udevadm trigger --action=add --subsystem-match=input >/dev/null 2>&1 || true
-        udevadm trigger --action=add --subsystem-match=hidraw >/dev/null 2>&1 || true
+        udevadm trigger >/dev/null 2>&1 || true
         udevadm settle --timeout=10 || true
     else
         bashio::log.warning "udev n'a pas démarré (tactile/souris possiblement absents)"
@@ -144,13 +141,8 @@ bashio::log.info "Écran : $OUTPUT ${SCREEN_W}x${SCREEN_H} (rotation $ROTATE)"
 bashio::log.info "Entrées vues par l'affichage :"
 { xinput list --short 2>&1 || true; } | sed 's/^/  /' || true
 
-if [ "$(ls /run/udev/data 2>/dev/null | wc -l)" -lt 5 ] || ! xinput list --short 2>/dev/null | grep -qi "slave  pointer" | grep -vq XTEST; then
-    bashio::log.info "Diagnostic entrées : base udev=$(ls /run/udev/data 2>/dev/null | wc -l) fichiers"
-    for e in /dev/input/event*; do
-        p=$(udevadm info --query=property --name="$e" 2>/dev/null | grep -E '^(ID_INPUT_MOUSE|ID_INPUT_KEYBOARD|ID_INPUT_TOUCHSCREEN|ID_INPUT)=' | tr '\n' ' ')
-        [ -n "$p" ] && echo "  $e : $p"
-    done
-    grep -iE "config/udev|libinput|No input driver|input device|Adding input" /var/log/Xorg.0.log 2>/dev/null | tail -n 15 | sed 's/^/  X: /'
+if ! xinput list --short 2>/dev/null | grep -v -i "virtual core\|xtest" | grep -qi "pointer\|keyboard"; then
+    bashio::log.info "Aucune souris/clavier/tactile vu par l'affichage pour l'instant"
 fi
 
 # Map touch screens onto the output
@@ -219,11 +211,12 @@ if [ -n "${LIBVA_DRIVER_NAME:-}" ]; then
 fi
 
 START_URL="$HA_URL/manifest.json"
+CHROME_BIN=$(command -v chromium-browser || command -v chromium)
 
 chrome_loop() {
     while true; do
         bashio::log.info "Lancement de Chrome..."
-        chromium "${CHROME_FLAGS[@]}" "$START_URL" >/tmp/chromium.log 2>&1
+        "$CHROME_BIN" "${CHROME_FLAGS[@]}" "$START_URL" >/tmp/chromium.log 2>&1
         bashio::log.warning "Chrome s'est arrêté (code $?), relance dans 3 s"
         tail -n 15 /tmp/chromium.log
         sleep 3
