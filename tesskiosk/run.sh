@@ -58,8 +58,16 @@ if [ -n "$UDEVD" ]; then
 else
     bashio::log.warning "udevd introuvable"
 fi
+# udev cannot "trigger" in a container (read-only sysfs): process each input device by hand
+for dev in /dev/input/event*; do
+    [ -c "$dev" ] || continue
+    devpath=$(udevadm info --query=path --name="$dev" 2>/dev/null) || continue
+    udevadm test "$devpath" >/dev/null 2>&1 || true
+done
+udevadm settle --timeout=10 || true
 bashio::log.info "Périphériques d'entrée :"
-libinput list-devices 2>/dev/null | awk -F': *' '/^Device:/{d=$2} /^Capabilities:/{print "  - " d " (" $2 ")"}'
+awk -F'"' '/^N: Name=/{print "  - " $2}' /proc/bus/input/devices
+ls /dev/input/ 2>/dev/null | tr '\n' ' ' | sed 's/^/  nœuds : /'; echo
 
 #------------------------------------------------------------- video output --
 selected_card=""
@@ -121,6 +129,9 @@ xrandr --output "$OUTPUT" --primary --auto --rotate "$ROTATE"
 read -r SCREEN_W SCREEN_H < <(xrandr --query | awk '/ connected primary/{ if (match($0,/[0-9]+x[0-9]+\+/)) { s=substr($0,RSTART,RLENGTH-1); split(s,a,"x"); print a[1], a[2] } }')
 SCREEN_W=${SCREEN_W:-1920}; SCREEN_H=${SCREEN_H:-1080}
 bashio::log.info "Écran : $OUTPUT ${SCREEN_W}x${SCREEN_H} (rotation $ROTATE)"
+
+bashio::log.info "Entrées vues par l'affichage :"
+xinput list --name-only 2>/dev/null | grep -v -i "virtual core\|xtest" | sed 's/^/  - /'
 
 # Map touch screens onto the output
 while IFS= read -r id; do
