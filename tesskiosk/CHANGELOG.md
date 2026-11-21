@@ -1,2 +1,6 @@
+## 0.2.0
+- Appairage Bluetooth d'une souris ou d'un clavier (option bluetooth_pairing).
+- udev : les erreurs sans gravité ne sont plus signalées.
+
 ## 0.1.0
 - Première version : Chromium plein écran, décodage vidéo matériel, connexion automatique, API locale.

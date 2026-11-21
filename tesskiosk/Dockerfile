@@ -36,11 +36,12 @@ RUN apt-get update \
       procps \
       python3 \
       python3-websocket \
+      bluez \
  && sed -i 's/^# *fr_FR.UTF-8/fr_FR.UTF-8/' /etc/locale.gen && locale-gen \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY xorg.conf /etc/X11/xorg.conf.tesskiosk
-COPY run.sh kiosk.py /
+COPY run.sh kiosk.py bt.py /
 RUN chmod a+x /run.sh
 
 CMD ["/run.sh"]

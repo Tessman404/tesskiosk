@@ -29,6 +29,7 @@ SCREEN_TIMEOUT="$(bashio::config 'screen_timeout')"
 ROTATE="$(bashio::config 'rotate')"
 HIDE_CURSOR="$(bashio::config 'hide_cursor')"
 HW_VIDEO="$(bashio::config 'hardware_video')"
+BT_PAIRING="$(bashio::config 'bluetooth_pairing')"
 
 if [ -z "$HA_USERNAME" ] || [ -z "$HA_PASSWORD" ]; then
     bashio::log.fatal "Renseigne ha_username et ha_password dans la configuration."
@@ -48,8 +49,12 @@ for c in /usr/lib/systemd/systemd-udevd /lib/systemd/systemd-udevd "$(command -v
     [ -n "$c" ] && [ -x "$c" ] && UDEVD="$c" && break
 done
 if [ -n "$UDEVD" ]; then
-    "$UDEVD" --daemon && udevadm trigger && udevadm settle --timeout=10 \
-        || bashio::log.warning "udev n'a pas démarré correctement (tactile/souris possiblement absents)"
+    if "$UDEVD" --daemon; then
+        udevadm trigger >/dev/null 2>&1 || true   # some sysfs entries are read-only: harmless
+        udevadm settle --timeout=10 || true
+    else
+        bashio::log.warning "udev n'a pas démarré (tactile/souris possiblement absents)"
+    fi
 else
     bashio::log.warning "udevd introuvable"
 fi
@@ -194,6 +199,12 @@ chrome_loop() {
     done
 }
 chrome_loop &
+
+#----------------------------------------------------------------- bluetooth --
+if [ "$BT_PAIRING" = "true" ]; then
+    bashio::log.info "Mode appairage Bluetooth activé (désactive-le ensuite dans la configuration)"
+    python3 -u /bt.py 60 &
+fi
 
 #---------------------------------------------------- session manager (py) --
 bashio::log.info "Démarrage du gestionnaire de session..."
