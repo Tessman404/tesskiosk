@@ -144,6 +144,15 @@ bashio::log.info "Écran : $OUTPUT ${SCREEN_W}x${SCREEN_H} (rotation $ROTATE)"
 bashio::log.info "Entrées vues par l'affichage :"
 { xinput list --short 2>&1 || true; } | sed 's/^/  /' || true
 
+if [ "$(ls /run/udev/data 2>/dev/null | wc -l)" -lt 5 ] || ! xinput list --short 2>/dev/null | grep -qi "slave  pointer" | grep -vq XTEST; then
+    bashio::log.info "Diagnostic entrées : base udev=$(ls /run/udev/data 2>/dev/null | wc -l) fichiers"
+    for e in /dev/input/event*; do
+        p=$(udevadm info --query=property --name="$e" 2>/dev/null | grep -E '^(ID_INPUT_MOUSE|ID_INPUT_KEYBOARD|ID_INPUT_TOUCHSCREEN|ID_INPUT)=' | tr '\n' ' ')
+        [ -n "$p" ] && echo "  $e : $p"
+    done
+    grep -iE "config/udev|libinput|No input driver|input device|Adding input" /var/log/Xorg.0.log 2>/dev/null | tail -n 15 | sed 's/^/  X: /'
+fi
+
 # Map touch screens onto the output
 while IFS= read -r id; do
     name=$(xinput list --name-only "$id" 2>/dev/null)

@@ -1,3 +1,6 @@
+## 0.2.4
+- Diagnostic des périphériques d'entrée.
+
 ## 0.2.3
 - Souris, clavier et tactile reconnus par l'affichage (udev).
 
