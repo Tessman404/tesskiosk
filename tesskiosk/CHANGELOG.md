@@ -1,3 +1,6 @@
+## 0.3.2
+- Vérification du masquage du curseur (toucher / inactivité).
+
 ## 0.3.1
 - Journal : utilisation de la puce graphique par Chrome.
 

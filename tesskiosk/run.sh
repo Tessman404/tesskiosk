@@ -157,7 +157,17 @@ else
 fi
 if [ "$HIDE_CURSOR" = "true" ]; then
     UNCL=$(command -v unclutter-xfixes || command -v unclutter || true)
-    [ -n "$UNCL" ] && "$UNCL" --timeout 2 --hide-on-touch --start-hidden --fork 2>/dev/null
+    if [ -n "$UNCL" ]; then
+        "$UNCL" --timeout 2 --hide-on-touch --start-hidden --fork 2>/dev/null
+        sleep 0.3
+        if pgrep -f unclutter >/dev/null 2>&1; then
+            bashio::log.info "Curseur : caché au toucher et après 2 s sans mouvement"
+        else
+            bashio::log.warning "Curseur : le masquage automatique n'a pas démarré"
+        fi
+    else
+        bashio::log.warning "Curseur : outil de masquage introuvable"
+    fi
 fi
 
 #---------------------------------------------------------- hardware video --
