@@ -1,0 +1,75 @@
+name: TessKiosk
+version: "0.2.2"
+slug: tesskiosk
+description: Affiche un tableau de bord Home Assistant en plein écran avec Chrome, sur l'écran branché au serveur
+url: https://github.com/Tessman404/tesskiosk
+arch:
+  - amd64
+init: false
+startup: application
+boot: auto
+host_network: true
+host_dbus: true
+usb: true
+audio: true
+privileged:
+  - SYS_ADMIN
+ulimits:
+  nofile:
+    soft: 65536
+    hard: 65536
+devices:
+  - /dev/dri/card0
+  - /dev/dri/card1
+  - /dev/dri/renderD128
+  - /dev/dri/renderD129
+  - /dev/input/event0
+  - /dev/input/event1
+  - /dev/input/event2
+  - /dev/input/event3
+  - /dev/input/event4
+  - /dev/input/event5
+  - /dev/input/event6
+  - /dev/input/event7
+  - /dev/input/event8
+  - /dev/input/event9
+  - /dev/input/event10
+  - /dev/input/event11
+  - /dev/input/event12
+  - /dev/input/event13
+  - /dev/input/event14
+  - /dev/input/event15
+  - /dev/input/event16
+  - /dev/input/event17
+  - /dev/input/event18
+  - /dev/input/event19
+  - /dev/input/event20
+  - /dev/input/event21
+  - /dev/input/event22
+  - /dev/input/event23
+  - /dev/input/event24
+  - /dev/input/event25
+options:
+  ha_username: ""
+  ha_password: ""
+  ha_url: "http://127.0.0.1:8123"
+  dashboard: "cuisine-24"
+  zoom: 100
+  screen_timeout: 0
+  rotate: normal
+  hide_cursor: true
+  api_port: 8099
+  hardware_video: true
+  bluetooth_pairing: false
+schema:
+  ha_username: str
+  ha_password: password
+  ha_url: url
+  dashboard: str
+  zoom: int(50,300)
+  screen_timeout: int(0,)
+  rotate: list(normal|left|right|inverted)
+  hide_cursor: bool
+  api_port: port
+  hardware_video: bool
+  bluetooth_pairing: bool
