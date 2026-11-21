@@ -35,11 +35,23 @@ home_paths = {urllib.parse.urlparse(HOME_URL).path.rstrip("/") or "/"}
 
 # Installed in the page: remembers the last time someone touched / moved / typed
 IDLE_JS = """(() => {
+  const mark = () => { window.__tkIdle = Date.now(); };
+  const EV = ['pointerdown','pointermove','touchstart','keydown','wheel'];
   if (!window.__tkIdle) {
     window.__tkIdle = Date.now();
-    ['pointerdown','pointermove','touchstart','keydown','wheel'].forEach(e =>
-      addEventListener(e, () => { window.__tkIdle = Date.now(); }, {capture: true, passive: true}));
+    EV.forEach(e => addEventListener(e, mark, {capture: true, passive: true}));
   }
+  // also listen inside the add-on pages (Tessbet, Tessfood...), shown in iframes
+  const frames = [];
+  const walk = (root) => root.querySelectorAll('iframe, *').forEach(el => {
+    if (el.tagName === 'IFRAME') frames.push(el);
+    if (el.shadowRoot) walk(el.shadowRoot);
+  });
+  try { walk(document); } catch (e) {}
+  frames.forEach(f => { try {
+    const w = f.contentWindow;
+    if (w && !w.__tkHooked) { w.__tkHooked = true; EV.forEach(e => w.addEventListener(e, mark, {capture: true, passive: true})); }
+  } catch (e) {} });
   return [Date.now() - window.__tkIdle, location.pathname];
 })()"""
 

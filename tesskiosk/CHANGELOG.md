@@ -1,3 +1,6 @@
+## 0.4.1
+- Retour à l'accueil : l'activité dans les pages des extensions (Tessbet, Tessfood…) compte aussi.
+
 ## 0.4.0
 - Retour automatique à l'accueil après X minutes sans activité (option return_home_minutes, 0 = désactivé).
 
