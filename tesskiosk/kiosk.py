@@ -30,6 +30,25 @@ DASHBOARD = os.environ.get("DASHBOARD", "").strip("/")
 API_PORT = int(os.environ.get("API_PORT", "8099"))
 CDP = "http://127.0.0.1:9222"
 HOME_URL = f"{HA}/{DASHBOARD}" if DASHBOARD else HA + "/"
+RETURN_HOME_S = int(os.environ.get("RETURN_HOME_MINUTES", "5") or 0) * 60
+home_paths = {urllib.parse.urlparse(HOME_URL).path.rstrip("/") or "/"}
+
+# Installed in the page: remembers the last time someone touched / moved / typed
+IDLE_JS = """(() => {
+  if (!window.__tkIdle) {
+    window.__tkIdle = Date.now();
+    ['pointerdown','pointermove','touchstart','keydown','wheel'].forEach(e =>
+      addEventListener(e, () => { window.__tkIdle = Date.now(); }, {capture: true, passive: true}));
+  }
+  return [Date.now() - window.__tkIdle, location.pathname];
+})()"""
+
+GO_HOME_JS = """((p) => {
+  history.pushState(null, '', p);
+  window.dispatchEvent(new CustomEvent('location-changed', {detail: {replace: false}}));
+  window.__tkIdle = Date.now();
+  return true;
+})(%s)"""
 
 lock = threading.RLock()
 # Local connections only: never go through a proxy
@@ -186,7 +205,10 @@ def ensure_session(force_login=False):
         p.eval("localStorage.setItem('hassTokens', %s);"
                "localStorage.setItem('dockedSidebar', '\"always_hidden\"');"
                "true" % json.dumps(json.dumps(tok)))
-        p.goto(HOME_URL)
+        p.goto(HOME_URL, settle=4.0)
+        landing = (p.eval("location.pathname") or "").rstrip("/")
+        if landing:
+            home_paths.add(landing)
         log(f"Tableau de bord ouvert : {HOME_URL}")
     return with_page(run)
 
@@ -233,6 +255,13 @@ def watchdog():
                 log(f"Session à rétablir (page : {url[:80]})")
                 ensure_session(force_login="/auth/authorize" in url)
                 continue
+            # back to the home page after a while without anybody touching the screen
+            if RETURN_HOME_S:
+                idle_ms, path = with_page(lambda p, t: p.eval(IDLE_JS)) or (0, "")
+                if idle_ms >= RETURN_HOME_S * 1000 and (path or "").rstrip("/") not in home_paths:
+                    target_path = sorted(home_paths, key=len)[-1]
+                    with_page(lambda p, t: p.eval(GO_HOME_JS % json.dumps(target_path)))
+                    log(f"Retour à l'accueil après {RETURN_HOME_S // 60} min sans activité (depuis {path})")
             # one quiet reload per night to keep memory low
             now = time.localtime()
             if now.tm_hour == 4 and last_reload_day != now.tm_yday:

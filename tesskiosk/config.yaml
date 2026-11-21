@@ -1,5 +1,5 @@
 name: TessKiosk
-version: "0.3.2"
+version: "0.4.0"
 slug: tesskiosk
 description: Affiche un tableau de bord Home Assistant en plein écran avec Chrome, sur l'écran branché au serveur
 url: https://github.com/Tessman404/tesskiosk
@@ -61,6 +61,7 @@ options:
   api_port: 8099
   hardware_video: true
   bluetooth_pairing: false
+  return_home_minutes: 5
 schema:
   ha_username: str
   ha_password: password
@@ -73,3 +74,4 @@ schema:
   api_port: port
   hardware_video: bool
   bluetooth_pairing: bool
+  return_home_minutes: int(0,120)

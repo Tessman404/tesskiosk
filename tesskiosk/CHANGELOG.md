@@ -1,3 +1,6 @@
+## 0.4.0
+- Retour automatique à l'accueil après X minutes sans activité (option return_home_minutes, 0 = désactivé).
+
 ## 0.3.2
 - Vérification du masquage du curseur (toucher / inactivité).
 
