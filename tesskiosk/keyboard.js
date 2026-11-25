@@ -227,36 +227,137 @@
       if (e.touches.length !== 2 || !d0 || done) return;
       const d = dist(e.touches);
       if (d < d0 * 0.55) { done = true; ask('home'); }
-      else if (d > d0 * 1.8 && d - d0 > 220 && onHA()) { done = true; ask('art'); }
+      else if (d > d0 * 1.8 && d - d0 > 220 && onHA()) { done = true; window.__tessArt.start(); }
     }, { capture: true, passive: true });
     addEventListener('touchend', (e) => { if (e.touches.length < 2) d0 = 0; }, { capture: true, passive: true });
   }
 
   // ---------------------------------------------------------------- tableaux
+  // Tableaux modernes de style scandinave, peints à la volée (plein écran) :
+  // montagnes en aplats, fjords, soleil, sapins, aurores... un nouveau toutes les 15 min.
   const ART_EVERY_MS = 15 * 60 * 1000;
-  const art = { el: null, timer: null, list: [], i: 0, port: 8099 };
-  function artShow(item) {
-    const r = art.el.shadowRoot;
-    const url = 'http://127.0.0.1:' + art.port + '/art/' + item.file;
-    const pre = new Image();
-    pre.onload = () => {
-      const layers = r.querySelectorAll('.layer');
-      const next = layers[0].classList.contains('on') ? layers[1] : layers[0];
-      const cur = next === layers[0] ? layers[1] : layers[0];
-      next.querySelector('.bg').style.backgroundImage = 'url("' + url + '")';
-      next.querySelector('img').src = url;
-      next.querySelector('.cap').textContent =
-        [item.title, [item.artist, item.date].filter(Boolean).join(', ')].filter(Boolean).join(' — ');
-      next.classList.add('on');
-      cur.classList.remove('on');
-    };
-    pre.onerror = () => artNext();
-    pre.src = url;
+  const PALETTES = [
+    { sky: ['#f4e9dc', '#ead2bf'], sun: '#de7a5c', layers: ['#d9c4b4', '#b9a9a3', '#8fa3a6', '#5f7e84', '#37545a', '#1f3439'] },
+    { sky: ['#eef0e6', '#dfe5d2'], sun: '#d8a24a', layers: ['#c7d0b6', '#a5b595', '#7f9573', '#5c7454', '#3d5239', '#263424'] },
+    { sky: ['#e9eff3', '#cddbe4'], sun: '#efc19b', layers: ['#bccbd6', '#9bb0c0', '#7790a4', '#566f84', '#3a5063', '#233545'] },
+    { sky: ['#f7e7d4', '#f0c9a8'], sun: '#c5543b', layers: ['#e8b392', '#d0916f', '#a86a50', '#7c4a3a', '#4f2f27', '#2c1b17'] },
+    { sky: ['#2a2f45', '#7b6990'], sun: '#f3d58c', layers: ['#5d5279', '#4a3f64', '#372f4f', '#27223b', '#1a1729', '#100e1a'] },
+    { sky: ['#0d1b26', '#1f4152'], sun: '#eef0e2', layers: ['#1d3a49', '#17303d', '#122733', '#0e1f29', '#0a171f', '#060f15'], aurora: true },
+    { sky: ['#f1ece4', '#e3d9cc'], sun: '#2f4858', layers: ['#d6cfc4', '#b8b2a7', '#8e938d', '#5f6b6b', '#3c4a4d', '#223034'] },
+    { sky: ['#fbe8e0', '#f2cfc4'], sun: '#e9967a', layers: ['#e6c3bb', '#c9a3a6', '#a08394', '#77637c', '#4f4460', '#2e2a42'] },
+  ];
+  function rnd(a, b) { return a + Math.random() * (b - a); }
+  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+  function ridge(W, base, amp, sharp) {
+    // ligne de crête : somme de sinus (doux) ou pics anguleux (fjords)
+    const pts = [], f = [rnd(.6, 1.4), rnd(1.6, 3.2), rnd(3.5, 6.5)], ph = [rnd(0, 6), rnd(0, 6), rnd(0, 6)];
+    const step = sharp ? W / Math.floor(rnd(5, 11)) : W / 160;
+    for (let x = -step; x <= W + step; x += step) {
+      const t = x / W * Math.PI * 2;
+      let y = Math.sin(t * f[0] + ph[0]) * .55 + Math.sin(t * f[1] + ph[1]) * .3 + Math.sin(t * f[2] + ph[2]) * .15;
+      if (sharp) y += rnd(-.35, .35);
+      pts.push([x, base - y * amp]);
+    }
+    return pts;
   }
+  function fillRidge(g, pts, H, color) {
+    g.beginPath(); g.moveTo(pts[0][0], H);
+    pts.forEach(([x, y]) => g.lineTo(x, y));
+    g.lineTo(pts[pts.length - 1][0], H); g.closePath(); g.fillStyle = color; g.fill();
+  }
+  function tree(g, x, y, h, color) {
+    g.fillStyle = color; g.beginPath();
+    const tiers = 4, w = h * .42;
+    for (let i = 0; i < tiers; i++) {
+      const ty = y - h + i * h / (tiers + .5), bw = w * (i + 1) / tiers;
+      g.moveTo(x, ty); g.lineTo(x - bw / 2, ty + h / tiers * 1.25); g.lineTo(x + bw / 2, ty + h / tiers * 1.25); g.closePath();
+    }
+    g.fill(); g.fillRect(x - h * .02, y - h * .08, h * .04, h * .08);
+  }
+  function paint(canvas) {
+    const W = canvas.width, H = canvas.height, g = canvas.getContext('2d');
+    const P = pick(PALETTES);
+    const sharp = Math.random() < .45, lake = Math.random() < .45, trees = Math.random() < .6;
+    // ciel
+    const sky = g.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, P.sky[0]); sky.addColorStop(1, P.sky[1]);
+    g.fillStyle = sky; g.fillRect(0, 0, W, H);
+    // aurore boréale
+    if (P.aurora) {
+      for (let k = 0; k < 3; k++) {
+        const y0 = H * rnd(.12, .3);
+        g.beginPath();
+        for (let x = 0; x <= W; x += 8) g.lineTo(x, y0 + Math.sin(x / W * rnd(4, 7) + k) * H * .05);
+        g.strokeStyle = pick(['rgba(110,231,183,.28)', 'rgba(94,234,212,.22)', 'rgba(167,139,250,.18)']);
+        g.lineWidth = H * rnd(.05, .11); g.filter = 'blur(' + Math.round(H * .025) + 'px)'; g.stroke(); g.filter = 'none';
+      }
+      for (let i = 0; i < 160; i++) { g.fillStyle = 'rgba(255,255,255,' + rnd(.2, .8) + ')'; g.fillRect(rnd(0, W), rnd(0, H * .55), 1.6, 1.6); }
+    }
+    // soleil ou lune, avec bandes façon affiche
+    const sr = H * rnd(.09, .16), sx = W * rnd(.2, .8), sy = H * rnd(.22, .42);
+    g.save(); g.beginPath(); g.arc(sx, sy, sr, 0, Math.PI * 2); g.fillStyle = P.sun; g.fill();
+    if (Math.random() < .5) {
+      g.clip(); g.fillStyle = P.sky[1];
+      for (let i = 1; i < 5; i++) g.fillRect(sx - sr, sy + sr * (i / 5) * 1.0 - 2, sr * 2, sr * .045 * i);
+    }
+    g.restore();
+    // oiseaux
+    if (!P.aurora && Math.random() < .6) {
+      g.strokeStyle = P.layers[4]; g.lineWidth = Math.max(2, H * .0025); g.lineCap = 'round';
+      const bx = W * rnd(.3, .7), by = H * rnd(.15, .3);
+      for (let i = 0; i < Math.floor(rnd(3, 7)); i++) {
+        const x = bx + rnd(-W * .08, W * .08), y = by + rnd(-H * .05, H * .05), s = H * rnd(.008, .016);
+        g.beginPath(); g.moveTo(x - s, y - s * .4); g.quadraticCurveTo(x - s * .4, y - s * .7, x, y);
+        g.quadraticCurveTo(x + s * .4, y - s * .7, x + s, y - s * .4); g.stroke();
+      }
+    }
+    // montagnes en couches
+    const n = P.layers.length, horizon = lake ? H * .66 : H;
+    for (let i = 0; i < n - (lake ? 2 : 0); i++) {
+      const base = H * (.45 + i * (lake ? .04 : .1)), amp = H * (sharp ? .2 - i * .022 : .12 - i * .012);
+      const pts = ridge(W, base, amp, sharp && i < 3);
+      fillRidge(g, pts, horizon, P.layers[i]);
+    }
+    // lac avec reflets
+    if (lake) {
+      const lg = g.createLinearGradient(0, horizon, 0, H);
+      lg.addColorStop(0, P.layers[1]); lg.addColorStop(1, P.layers[3]);
+      g.fillStyle = lg; g.fillRect(0, horizon, W, H - horizon);
+      g.fillStyle = P.sun; g.globalAlpha = .35;
+      for (let i = 0; i < 7; i++) { const w = sr * rnd(.6, 1.8) * (1 - i / 9); g.fillRect(sx - w / 2, horizon + 8 + i * H * .03, w, Math.max(2, H * .004)); }
+      g.globalAlpha = 1;
+      g.fillStyle = 'rgba(255,255,255,.12)';
+      for (let i = 0; i < 26; i++) g.fillRect(rnd(0, W), rnd(horizon + 10, H), rnd(W * .02, W * .08), 2);
+      // rive au premier plan
+      fillRidge(g, ridge(W, H * .93, H * .04, false), H, P.layers[n - 1]);
+    }
+    // sapins
+    if (trees) {
+      const groundY = lake ? H * .93 : H * .97, col = P.layers[n - 1];
+      if (!lake) fillRidge(g, ridge(W, groundY, H * .03, false), H, col);
+      const count = Math.floor(rnd(6, 16)), side = Math.random() < .5;
+      for (let i = 0; i < count; i++) {
+        const x = side ? rnd(0, W * .38) : rnd(W * .62, W), h = H * rnd(.12, .3);
+        tree(g, x, groundY + rnd(0, H * .03), h, col);
+      }
+    }
+    // grain léger façon impression
+    const img = g.getImageData(0, 0, W, H), d = img.data;
+    for (let i = 0; i < d.length; i += 4) { const v = (Math.random() - .5) * 14; d[i] += v; d[i + 1] += v; d[i + 2] += v; }
+    g.putImageData(img, 0, 0);
+  }
+
+  const art = { el: null, timer: null };
   function artNext() {
-    if (!art.list.length) return;
-    art.i = (art.i + 1) % art.list.length;
-    artShow(art.list[art.i]);
+    const r = art.el && art.el.shadowRoot;
+    if (!r) return;
+    const cs = r.querySelectorAll('canvas');
+    const next = cs[0].classList.contains('on') ? cs[1] : cs[0];
+    const cur = next === cs[0] ? cs[1] : cs[0];
+    next.width = Math.round(innerWidth * (devicePixelRatio || 1));
+    next.height = Math.round(innerHeight * (devicePixelRatio || 1));
+    paint(next);
+    next.classList.add('on'); cur.classList.remove('on');
   }
   function artStop() {
     clearInterval(art.timer);
@@ -264,36 +365,28 @@
     if (art.el) { art.el.remove(); art.el = null; }
   }
   window.__tessArt = {
-    start(list, port) {
-      if (art.el || !list || !list.length) return;
-      art.port = port || 8099;
-      art.list = list.slice().sort(() => Math.random() - 0.5);
-      art.i = 0;
+    start() {
+      if (art.el) return;
       const host = document.createElement('div');
       host.id = 'tesskiosk-art';
       const r = host.attachShadow({ mode: 'open' });
-      const layer = `<div class="layer"><div class="bg"></div><img alt=""><div class="cap"></div></div>`;
       r.innerHTML = `<style>
         :host{all:initial}
-        .wrap{position:fixed;inset:0;z-index:2147483646;background:#0b0b0d;cursor:pointer;overflow:hidden}
-        .layer{position:absolute;inset:0;opacity:0;transition:opacity 2.5s ease}
-        .layer.on{opacity:1}
-        .bg{position:absolute;inset:-40px;background-size:cover;background-position:center;filter:blur(38px) brightness(.45) saturate(1.1)}
-        img{position:absolute;inset:0;margin:auto;max-width:100%;max-height:100%;width:100%;height:100%;object-fit:contain;
-          filter:drop-shadow(0 18px 40px rgba(0,0,0,.6))}
-        .cap{position:absolute;left:28px;bottom:20px;max-width:70%;font:13px/1.4 Roboto,'Liberation Sans',sans-serif;
-          color:rgba(255,255,255,.55);letter-spacing:.3px;text-shadow:0 1px 3px rgba(0,0,0,.8)}
-      </style><div class="wrap">${layer}${layer}</div>`;
+        .wrap{position:fixed;inset:0;z-index:2147483646;background:#000;cursor:none;overflow:hidden}
+        canvas{position:absolute;inset:0;width:100%;height:100%;opacity:0;transition:opacity 3s ease}
+        canvas.on{opacity:1}
+      </style><div class="wrap"><canvas></canvas><canvas></canvas></div>`;
       const t0 = Date.now();  // les doigts du geste se relèvent juste après : on les ignore
       const stop = (e) => { e.preventDefault(); e.stopPropagation(); if (Date.now() - t0 > 1200) artStop(); };
       r.querySelector('.wrap').addEventListener('click', stop, true);
       r.querySelector('.wrap').addEventListener('touchend', (e) => { if (!e.touches.length) stop(e); }, true);
       document.documentElement.appendChild(host);
       art.el = host;
-      artShow(art.list[0]);
+      artNext();
       art.timer = setInterval(artNext, ART_EVERY_MS);
     },
     stop: artStop,
+    paint,
   };
 
   function start() {

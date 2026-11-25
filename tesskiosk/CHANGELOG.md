@@ -1,3 +1,6 @@
+## 0.7.1
+- Tableaux remplacés par des œuvres modernes de style scandinave, dessinées sur place (montagnes en aplats, fjords, soleil, sapins, aurores), en plein écran sans bordure ni légende. Plus de téléchargement.
+
 ## 0.7.0
 - Tableaux : écarter deux doigts sur le tableau de bord affiche des paysages scandinaves (peintures du domaine public, Wikimedia Commons), un nouveau toutes les 15 minutes. Un toucher les arrête.
 - Pincer vers l'intérieur ramène aussi à l'accueil depuis n'importe quel onglet du tableau de bord.
