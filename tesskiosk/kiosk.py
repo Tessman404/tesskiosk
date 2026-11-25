@@ -140,14 +140,27 @@ def refresh(refresh_token):
 
 
 # -------------------------------------------------------------- DevTools
-def page_target():
+def all_pages():
     try:
         _, targets = http("GET", f"{CDP}/json", timeout=3)
     except Exception:
-        return None
-    pages = [t for t in targets if t.get("type") == "page"
-             and not t.get("url", "").startswith(("chrome://", "devtools://", "chrome-extension://"))]
-    return pages[0] if pages else None
+        return []
+    return [t for t in targets if t.get("type") == "page"
+            and not t.get("url", "").startswith(("chrome://", "devtools://", "chrome-extension://"))]
+
+
+def page_target():
+    """The Home Assistant page (other tabs are sites opened from a link)."""
+    pages = all_pages()
+    ha = [t for t in pages if t.get("url", "").startswith(HA)]
+    return (ha or pages or [None])[0]
+
+
+def close_target(t):
+    try:
+        http("GET", f"{CDP}/json/close/{t['id']}", timeout=3)
+    except Exception:
+        pass
 
 
 class Page:
@@ -207,74 +220,101 @@ KEYS = {  # key -> (code, windows virtual key code, text typed)
 }
 
 
-def keyboard_loop():
-    """Keeps one DevTools connection open to the page: it injects keyboard.js
-    in every page load and types the keys the on-screen keyboard sends."""
+def page_helper(target, js):
+    """One DevTools connection per tab: injects keyboard.js on every page load
+    and types the keys sent by the on-screen keyboard."""
+    ws = websocket.create_connection(target["webSocketDebuggerUrl"], timeout=20,
+                                     suppress_origin=True,
+                                     http_no_proxy=["127.0.0.1", "localhost"])
+    n = [0]
+
+    def send(method, **params):
+        n[0] += 1
+        ws.send(json.dumps({"id": n[0], "method": method, "params": params}))
+
+    try:
+        send("Page.enable")
+        send("Runtime.enable")
+        send("Runtime.addBinding", name="tessKbd")
+        send("Page.addScriptToEvaluateOnNewDocument", source=js)
+        send("Runtime.evaluate", expression=js)
+        ws.settimeout(None)
+        while True:
+            msg = json.loads(ws.recv())
+            if msg.get("method") != "Runtime.bindingCalled":
+                continue
+            params = msg.get("params", {})
+            if params.get("name") != "tessKbd":
+                continue
+            try:
+                k = json.loads(params.get("payload") or "{}")
+            except ValueError:
+                continue
+            if k.get("t") == "text" and k.get("v"):
+                send("Input.insertText", text=str(k["v"])[:20])
+            elif k.get("t") == "key" and k.get("k") in KEYS:
+                code, vk, text = KEYS[k["k"]]
+                down = {"key": k["k"], "code": code, "windowsVirtualKeyCode": vk,
+                        "nativeVirtualKeyCode": vk}
+                if text:
+                    send("Input.dispatchKeyEvent", type="keyDown", text=text,
+                         unmodifiedText=text, **down)
+                else:
+                    send("Input.dispatchKeyEvent", type="rawKeyDown", **down)
+                send("Input.dispatchKeyEvent", type="keyUp", **down)
+            elif k.get("t") == "home":
+                go_home(target)
+    finally:
+        try:
+            ws.close()
+        except Exception:
+            pass
+
+
+def go_home(target=None):
+    """Back to the dashboard: closes the tabs opened from links (École Directe...)."""
+    main_page = page_target()
+    for t in all_pages():
+        if main_page and t["id"] != main_page["id"] and not t.get("url", "").startswith(HA):
+            close_target(t)
+    if main_page:
+        try:
+            http("GET", f"{CDP}/json/activate/{main_page['id']}", timeout=3)
+        except Exception:
+            pass
+        if not main_page.get("url", "").startswith(HA):
+            with_page(lambda p, t: p.goto(HOME_URL, settle=0))
+    log("Retour au tableau de bord")
+
+
+def helpers_loop():
+    """Watches the tabs and gives each one the keyboard and the home button."""
     try:
         with open("/keyboard.js", encoding="utf-8") as f:
-            js = f.read()
+            js = ("window.__tessHA=%s;window.__tessKbdOff=%s;\n" %
+                  (json.dumps(urllib.parse.urlparse(HA)._replace(path="").geturl()),
+                   "false" if VIRTUAL_KEYBOARD else "true")) + f.read()
     except OSError as e:
         log(f"Clavier virtuel indisponible : {e}")
         return
-    announced = False
+    running = {}
+    log("Clavier virtuel " + ("prêt" if VIRTUAL_KEYBOARD else "désactivé") + ", bouton d'accueil sur les autres sites")
     while True:
-        ws = None
-        try:
-            target = page_target()
-            if not target:
-                time.sleep(3)
+        for t in all_pages():
+            th = running.get(t["id"])
+            if th and th.is_alive():
                 continue
-            ws = websocket.create_connection(target["webSocketDebuggerUrl"], timeout=20,
-                                             suppress_origin=True,
-                                             http_no_proxy=["127.0.0.1", "localhost"])
-            n = [0]
 
-            def send(method, **params):
-                n[0] += 1
-                ws.send(json.dumps({"id": n[0], "method": method, "params": params}))
-
-            send("Page.enable")
-            send("Runtime.enable")
-            send("Runtime.addBinding", name="tessKbd")
-            send("Page.addScriptToEvaluateOnNewDocument", source=js)
-            send("Runtime.evaluate", expression=js)
-            if not announced:
-                log("Clavier virtuel prêt")
-                announced = True
-            ws.settimeout(None)
-            while True:
-                msg = json.loads(ws.recv())
-                if msg.get("method") != "Runtime.bindingCalled":
-                    continue
-                params = msg.get("params", {})
-                if params.get("name") != "tessKbd":
-                    continue
+            def run(t=t):
                 try:
-                    k = json.loads(params.get("payload") or "{}")
-                except ValueError:
-                    continue
-                if k.get("t") == "text" and k.get("v"):
-                    send("Input.insertText", text=str(k["v"])[:20])
-                elif k.get("t") == "key" and k.get("k") in KEYS:
-                    code, vk, text = KEYS[k["k"]]
-                    down = {"key": k["k"], "code": code, "windowsVirtualKeyCode": vk,
-                            "nativeVirtualKeyCode": vk}
-                    if text:
-                        send("Input.dispatchKeyEvent", type="keyDown", text=text,
-                             unmodifiedText=text, **down)
-                    else:
-                        send("Input.dispatchKeyEvent", type="rawKeyDown", **down)
-                    send("Input.dispatchKeyEvent", type="keyUp", **down)
-        except Exception as e:  # Chrome restarted, page closed... reconnect
-            if ws is not None:
-                log(f"Clavier virtuel : reconnexion ({e.__class__.__name__})")
-            time.sleep(3)
-        finally:
-            if ws is not None:
-                try:
-                    ws.close()
+                    page_helper(t, js)
                 except Exception:
                     pass
+            running[t["id"]] = threading.Thread(target=run, daemon=True)
+            running[t["id"]].start()
+        for tid in [i for i, th in running.items() if not th.is_alive()]:
+            running.pop(tid, None)
+        time.sleep(2)
 
 
 # ----------------------------------------------------------------- session
@@ -356,6 +396,23 @@ def watchdog():
                     target_path = sorted(home_paths, key=len)[-1]
                     with_page(lambda p, t: p.eval(GO_HOME_JS % json.dumps(target_path)))
                     log(f"Retour à l'accueil après {RETURN_HOME_S // 60} min sans activité (depuis {path})")
+            # sites opened from a link (École Directe...): closed after the same idle time
+            if RETURN_HOME_S:
+                for t in all_pages():
+                    if t["id"] == target["id"] or t.get("url", "").startswith(HA):
+                        continue
+                    try:
+                        pg = Page(t)
+                        try:
+                            idle_ms = (pg.eval(IDLE_JS) or [0])[0]
+                        finally:
+                            pg.close()
+                    except Exception:
+                        continue
+                    if idle_ms >= RETURN_HOME_S * 1000:
+                        go_home()
+                        log(f"Site fermé après {RETURN_HOME_S // 60} min sans activité : {t.get('url', '')[:60]}")
+                        break
             # one quiet reload per night to keep memory low
             now = time.localtime()
             if now.tm_hour == 4 and last_reload_day != now.tm_yday:
@@ -364,6 +421,68 @@ def watchdog():
                 log("Rechargement nocturne")
         except Exception as e:  # keep watching whatever happens
             log(f"Surveillance : {e}")
+
+
+# ------------------------------------------------------------ night screen
+SCREEN_TIMEOUT = int(os.environ.get("SCREEN_TIMEOUT", "0") or 0)
+NIGHT_FROM = os.environ.get("SCREEN_OFF_FROM", "").strip()
+NIGHT_TO = os.environ.get("SCREEN_OFF_TO", "").strip()
+NIGHT_IDLE_S = 60  # at night a touch wakes the screen up for 1 minute
+
+
+def minutes(hhmm):
+    h, m = hhmm.split(":")
+    return int(h) * 60 + int(m)
+
+
+def is_night():
+    if not NIGHT_FROM or not NIGHT_TO:
+        return False
+    now = time.localtime()
+    n, a, b = now.tm_hour * 60 + now.tm_min, minutes(NIGHT_FROM), minutes(NIGHT_TO)
+    return a <= n < b if a <= b else (n >= a or n < b)
+
+
+def night_loop():
+    if not NIGHT_FROM or not NIGHT_TO:
+        return
+    try:
+        minutes(NIGHT_FROM), minutes(NIGHT_TO)
+    except ValueError:
+        log(f"Horaires d'extinction invalides : {NIGHT_FROM} / {NIGHT_TO}")
+        return
+    log(f"Écran éteint chaque nuit de {NIGHT_FROM} à {NIGHT_TO}")
+    state = None
+    while True:
+        night = is_night()
+        if night != state:
+            if night:
+                xset("s", str(NIGHT_IDLE_S))
+                xset("+dpms")
+                xset("dpms", str(NIGHT_IDLE_S), str(NIGHT_IDLE_S), str(NIGHT_IDLE_S))
+                xset("dpms", "force", "off")
+                log("Nuit : écran éteint (un toucher le rallume 1 minute)")
+            elif state is not None:
+                if SCREEN_TIMEOUT:
+                    t = str(SCREEN_TIMEOUT)
+                    xset("s", t)
+                    xset("dpms", t, t, t)
+                else:
+                    xset("s", "off")
+                    xset("-dpms")
+                xset("dpms", "force", "on")
+                log("Matin : écran rallumé")
+            state = night
+        elif night:
+            # Chrome can keep the screen awake while the camera plays: switch it
+            # off again once nobody has touched it for a minute
+            try:
+                idle_ms = (with_page(lambda p, t: p.eval(IDLE_JS)) or [0])[0]
+                if idle_ms >= NIGHT_IDLE_S * 1000:
+                    xset("dpms", "force", "off")
+            except Exception:
+                pass
+        time.sleep(20)
 
 
 # --------------------------------------------------------------- local API
@@ -439,8 +558,8 @@ def main():
             time.sleep(10)
     log_gpu()
     threading.Thread(target=watchdog, daemon=True).start()
-    if VIRTUAL_KEYBOARD:
-        threading.Thread(target=keyboard_loop, daemon=True).start()
+    threading.Thread(target=helpers_loop, daemon=True).start()
+    threading.Thread(target=night_loop, daemon=True).start()
     server = ThreadingHTTPServer(("127.0.0.1", API_PORT), Api)
     log(f"API locale : http://127.0.0.1:{API_PORT}")
     server.serve_forever()

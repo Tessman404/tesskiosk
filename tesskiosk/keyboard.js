@@ -189,7 +189,44 @@
     }, true);
   }
 
+  // Bouton 🏠 sur les sites ouverts depuis un lien (École Directe…) :
+  // ramène au tableau de bord (kiosk.py ferme l'onglet du site)
+  function homeButton() {
+    if (!window.__tessHA || location.origin === window.__tessHA) return;
+    const b = document.createElement('div');
+    b.id = 'tesskiosk-home';
+    const r = b.attachShadow({ mode: 'open' });
+    r.innerHTML = `<style>:host{all:initial}
+      .h{position:fixed;left:0;top:50%;transform:translateY(-50%);z-index:2147483647;width:58px;height:64px;
+        border-radius:0 18px 18px 0;background:rgba(124,58,237,.92);box-shadow:0 4px 16px rgba(0,0,0,.45);
+        display:flex;align-items:center;justify-content:center;font-size:30px;cursor:pointer;user-select:none}</style>
+      <div class="h" title="Retour au tableau de bord">🏠</div>`;
+    r.querySelector('.h').addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      if (typeof window.tessKbd === 'function') window.tessKbd(JSON.stringify({ t: 'home' }));
+      else location.href = window.__tessHA;
+    }, true);
+    document.documentElement.appendChild(b);
+    // Pincement vers l'intérieur (deux doigts qui se rapprochent) = retour aussi
+    let d0 = 0, done = false;
+    const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) { d0 = dist(e.touches); done = false; }
+    }, { capture: true, passive: true });
+    addEventListener('touchmove', (e) => {
+      if (e.touches.length !== 2 || !d0 || done) return;
+      if (dist(e.touches) < d0 * 0.55) {
+        done = true;
+        if (typeof window.tessKbd === 'function') window.tessKbd(JSON.stringify({ t: 'home' }));
+        else location.href = window.__tessHA;
+      }
+    }, { capture: true, passive: true });
+    addEventListener('touchend', (e) => { if (e.touches.length < 2) d0 = 0; }, { capture: true, passive: true });
+  }
+
   function start() {
+    homeButton();
+    if (window.__tessKbdOff) return;
     watch(document);
     document.body.appendChild(host);
     draw();

@@ -1,3 +1,7 @@
+## 0.6.0
+- Écran éteint la nuit (options screen_off_from / screen_off_to, 00:30 → 07:00 par défaut). Un toucher le rallume 1 minute.
+- Sites ouverts depuis un lien (École Directe…) : bouton 🏠 ou pincement à deux doigts pour revenir au tableau de bord, clavier virtuel disponible, fermeture automatique après le délai d'inactivité.
+
 ## 0.5.0
 - Clavier virtuel AZERTY : il s'affiche tout seul quand on touche un champ de saisie (option virtual_keyboard).
 
