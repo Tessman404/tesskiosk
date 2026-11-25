@@ -1,3 +1,7 @@
+## 0.7.0
+- Tableaux : écarter deux doigts sur le tableau de bord affiche des paysages scandinaves (peintures du domaine public, Wikimedia Commons), un nouveau toutes les 15 minutes. Un toucher les arrête.
+- Pincer vers l'intérieur ramène aussi à l'accueil depuis n'importe quel onglet du tableau de bord.
+
 ## 0.6.1
 - Une caméra affichée en grand reste affichée : pas de retour automatique à l'accueil.
 

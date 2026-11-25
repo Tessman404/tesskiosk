@@ -10,6 +10,7 @@
     POST /navigate   {"path": "/cuisine-24/cameras"}
     POST /screen/on  /screen/off
 """
+import hashlib
 import json
 import os
 import subprocess
@@ -272,6 +273,13 @@ def page_helper(target, js):
                 send("Input.dispatchKeyEvent", type="keyUp", **down)
             elif k.get("t") == "home":
                 go_home(target)
+            elif k.get("t") == "art":
+                pics = art_list()
+                if pics:
+                    send("Runtime.evaluate", expression="window.__tessArt && window.__tessArt.start(%s, %d)"
+                         % (json.dumps(pics), API_PORT))
+                else:
+                    log("Tableaux : la bibliothèque n'est pas encore prête")
     finally:
         try:
             ws.close()
@@ -292,6 +300,9 @@ def go_home(target=None):
             pass
         if not main_page.get("url", "").startswith(HA):
             with_page(lambda p, t: p.goto(HOME_URL, settle=0))
+        elif urllib.parse.urlparse(main_page.get("url", "")).path.rstrip("/") not in home_paths:
+            target_path = sorted(home_paths, key=len)[-1]
+            with_page(lambda p, t: p.eval(GO_HOME_JS % json.dumps(target_path)))
     log("Retour au tableau de bord")
 
 
@@ -434,6 +445,120 @@ def watchdog():
             log(f"Surveillance : {e}")
 
 
+# ------------------------------------------------------------ art library
+# Paysages scandinaves du domaine public (peintres morts il y a plus de 70 ans),
+# téléchargés une fois depuis Wikimedia Commons dans /data/art.
+ART_DIR = "/data/art"
+ART_CATEGORIES = [
+    "Paintings by Harald Sohlberg", "Paintings by Peder Balke", "Paintings by Gustaf Fjæstad",
+    "Paintings by Hans Gude", "Paintings by Johan Christian Dahl", "Paintings by Thomas Fearnley",
+    "Paintings by Frits Thaulow", "Paintings by Anna Boberg", "Paintings by Prince Eugen",
+    "Paintings by Eero Järnefelt", "Paintings by Pekka Halonen", "Paintings by Nikolai Astrup",
+    "Paintings by Akseli Gallen-Kallela", "Paintings by Kitty Kielland", "Paintings by Eilif Peterssen",
+    "Paintings by Alfred Wahlberg", "Paintings by Theodor Kittelsen", "Paintings by Fanny Churberg",
+    "Paintings by Victor Westerholm", "Paintings by Werner Holmberg",
+]
+ART_PER_PAINTER = 5
+ART_SKIP = ("portrait", "self", "selvportrett", "självporträtt", "study", "studie", "sketch", "skisse",
+            "drawing", "tegning", "detail", "frame", "signature", "letter", "museum", "exhibition",
+            "photo", "foto", "woman", "man ", "girl", "boy", "kvinne", "mann", "pike", "gutt",
+            "interior", "interiør", "still life", "stilleben", "nude", "akt", "x-ray", "back")
+ART_UA = "TessKiosk/0.7 (https://github.com/Tessman404/tesskiosk) home kiosk art frame"
+art_lock = threading.Lock()
+
+
+def art_list():
+    try:
+        with open(os.path.join(ART_DIR, "index.json"), encoding="utf-8") as f:
+            items = json.load(f)
+        return [i for i in items if os.path.exists(os.path.join(ART_DIR, i["file"]))]
+    except Exception:
+        return []
+
+
+def web_get(url, timeout=30):
+    req = urllib.request.Request(url, headers={"User-Agent": ART_UA})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read()
+
+
+def clean_html(t):
+    import re
+    import html as h
+    return h.unescape(re.sub(r"<[^>]+>", "", t or "")).strip()
+
+
+def build_art():
+    import random
+    os.makedirs(ART_DIR, exist_ok=True)
+    have = art_list()
+    if len(have) >= 40:
+        return
+    items, seen = list(have), {i["file"] for i in have}
+    for cat in ART_CATEGORIES:
+        q = urllib.parse.urlencode({
+            "action": "query", "format": "json", "generator": "categorymembers",
+            "gcmtitle": "Category:" + cat, "gcmtype": "file", "gcmlimit": "200",
+            "prop": "imageinfo", "iiprop": "url|size|mime|extmetadata", "iiurlwidth": "1920",
+            "iiextmetadatafilter": "ObjectName|Artist|DateTimeOriginal",
+        })
+        try:
+            data = json.loads(web_get("https://commons.wikimedia.org/w/api.php?" + q))
+        except Exception as e:
+            log(f"Tableaux : {cat} indisponible ({e.__class__.__name__})")
+            continue
+        cands = []
+        for pg in (data.get("query", {}).get("pages", {}) or {}).values():
+            ii = (pg.get("imageinfo") or [{}])[0]
+            w, h = ii.get("width", 0), ii.get("height", 0)
+            title = pg.get("title", "")
+            low = title.lower()
+            if ii.get("mime") != "image/jpeg" or not h or w < 1400 or not (1.25 <= w / h <= 2.3):
+                continue
+            if any(k in low for k in ART_SKIP):
+                continue
+            cands.append((title, ii))
+        random.shuffle(cands)
+        got = 0
+        for title, ii in cands:
+            if got >= ART_PER_PAINTER:
+                break
+            name = hashlib.md5(title.encode()).hexdigest()[:12] + ".jpg"
+            if name in seen:
+                continue
+            try:
+                img = web_get(ii.get("thumburl") or ii["url"], timeout=60)
+                if len(img) < 50000:
+                    continue
+                with open(os.path.join(ART_DIR, name), "wb") as f:
+                    f.write(img)
+            except Exception:
+                continue
+            md = ii.get("extmetadata", {})
+            label = clean_html(md.get("ObjectName", {}).get("value")) or title[5:].rsplit(".", 1)[0]
+            items.append({"file": name, "title": label[:90],
+                          "artist": clean_html(md.get("Artist", {}).get("value"))[:60] or cat[13:],
+                          "date": clean_html(md.get("DateTimeOriginal", {}).get("value"))[:20]})
+            seen.add(name)
+            got += 1
+            time.sleep(1)
+        with open(os.path.join(ART_DIR, "index.json"), "w", encoding="utf-8") as f:
+            json.dump(items, f, ensure_ascii=False)
+    log(f"Tableaux : {len(items)} paysages dans la bibliothèque")
+
+
+def art_loop():
+    for attempt in range(6):
+        try:
+            with art_lock:
+                build_art()
+            if len(art_list()) >= 20:
+                return
+        except Exception as e:
+            log(f"Tableaux : {e}")
+        time.sleep(600)
+
+
 # ------------------------------------------------------------ night screen
 SCREEN_TIMEOUT = int(os.environ.get("SCREEN_TIMEOUT", "0") or 0)
 NIGHT_FROM = os.environ.get("SCREEN_OFF_FROM", "").strip()
@@ -524,6 +649,20 @@ class Api(BaseHTTPRequestHandler):
             return {}
 
     def do_GET(self):
+        if self.path.startswith("/art/"):
+            name = os.path.basename(self.path[5:])
+            path = os.path.join(ART_DIR, name)
+            if not name.endswith(".jpg") or not os.path.isfile(path):
+                return self.reply(404, {"error": "inconnu"})
+            with open(path, "rb") as f:
+                data = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "max-age=86400")
+            self.end_headers()
+            self.wfile.write(data)
+            return
         if self.path == "/status":
             t = page_target()
             return self.reply(200, {"url": t.get("url") if t else None, "home": HOME_URL})
@@ -571,6 +710,7 @@ def main():
     threading.Thread(target=watchdog, daemon=True).start()
     threading.Thread(target=helpers_loop, daemon=True).start()
     threading.Thread(target=night_loop, daemon=True).start()
+    threading.Thread(target=art_loop, daemon=True).start()
     server = ThreadingHTTPServer(("127.0.0.1", API_PORT), Api)
     log(f"API locale : http://127.0.0.1:{API_PORT}")
     server.serve_forever()

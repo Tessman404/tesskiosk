@@ -207,25 +207,98 @@
       else location.href = window.__tessHA;
     }, true);
     document.documentElement.appendChild(b);
-    // Pincement vers l'intérieur (deux doigts qui se rapprochent) = retour aussi
+  }
+
+  // ---------------------------------------------------------------- gestes
+  // Pincer vers l'intérieur : retour à l'accueil (et fermeture des sites ouverts).
+  // Écarter deux doigts (sur Home Assistant) : tableaux de paysages.
+  function gestures() {
     let d0 = 0, done = false;
     const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const onHA = () => !window.__tessHA || location.origin === window.__tessHA;
+    const ask = (t) => {
+      if (typeof window.tessKbd === 'function') window.tessKbd(JSON.stringify({ t }));
+      else if (t === 'home' && !onHA()) location.href = window.__tessHA;
+    };
     addEventListener('touchstart', (e) => {
       if (e.touches.length === 2) { d0 = dist(e.touches); done = false; }
     }, { capture: true, passive: true });
     addEventListener('touchmove', (e) => {
       if (e.touches.length !== 2 || !d0 || done) return;
-      if (dist(e.touches) < d0 * 0.55) {
-        done = true;
-        if (typeof window.tessKbd === 'function') window.tessKbd(JSON.stringify({ t: 'home' }));
-        else location.href = window.__tessHA;
-      }
+      const d = dist(e.touches);
+      if (d < d0 * 0.55) { done = true; ask('home'); }
+      else if (d > d0 * 1.8 && d - d0 > 220 && onHA()) { done = true; ask('art'); }
     }, { capture: true, passive: true });
     addEventListener('touchend', (e) => { if (e.touches.length < 2) d0 = 0; }, { capture: true, passive: true });
   }
 
+  // ---------------------------------------------------------------- tableaux
+  const ART_EVERY_MS = 15 * 60 * 1000;
+  const art = { el: null, timer: null, list: [], i: 0, port: 8099 };
+  function artShow(item) {
+    const r = art.el.shadowRoot;
+    const url = 'http://127.0.0.1:' + art.port + '/art/' + item.file;
+    const pre = new Image();
+    pre.onload = () => {
+      const layers = r.querySelectorAll('.layer');
+      const next = layers[0].classList.contains('on') ? layers[1] : layers[0];
+      const cur = next === layers[0] ? layers[1] : layers[0];
+      next.querySelector('.bg').style.backgroundImage = 'url("' + url + '")';
+      next.querySelector('img').src = url;
+      next.querySelector('.cap').textContent =
+        [item.title, [item.artist, item.date].filter(Boolean).join(', ')].filter(Boolean).join(' — ');
+      next.classList.add('on');
+      cur.classList.remove('on');
+    };
+    pre.onerror = () => artNext();
+    pre.src = url;
+  }
+  function artNext() {
+    if (!art.list.length) return;
+    art.i = (art.i + 1) % art.list.length;
+    artShow(art.list[art.i]);
+  }
+  function artStop() {
+    clearInterval(art.timer);
+    art.timer = null;
+    if (art.el) { art.el.remove(); art.el = null; }
+  }
+  window.__tessArt = {
+    start(list, port) {
+      if (art.el || !list || !list.length) return;
+      art.port = port || 8099;
+      art.list = list.slice().sort(() => Math.random() - 0.5);
+      art.i = 0;
+      const host = document.createElement('div');
+      host.id = 'tesskiosk-art';
+      const r = host.attachShadow({ mode: 'open' });
+      const layer = `<div class="layer"><div class="bg"></div><img alt=""><div class="cap"></div></div>`;
+      r.innerHTML = `<style>
+        :host{all:initial}
+        .wrap{position:fixed;inset:0;z-index:2147483646;background:#0b0b0d;cursor:pointer;overflow:hidden}
+        .layer{position:absolute;inset:0;opacity:0;transition:opacity 2.5s ease}
+        .layer.on{opacity:1}
+        .bg{position:absolute;inset:-40px;background-size:cover;background-position:center;filter:blur(38px) brightness(.45) saturate(1.1)}
+        img{position:absolute;inset:0;margin:auto;max-width:100%;max-height:100%;width:100%;height:100%;object-fit:contain;
+          filter:drop-shadow(0 18px 40px rgba(0,0,0,.6))}
+        .cap{position:absolute;left:28px;bottom:20px;max-width:70%;font:13px/1.4 Roboto,'Liberation Sans',sans-serif;
+          color:rgba(255,255,255,.55);letter-spacing:.3px;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+      </style><div class="wrap">${layer}${layer}</div>`;
+      const t0 = Date.now();  // les doigts du geste se relèvent juste après : on les ignore
+      const stop = (e) => { e.preventDefault(); e.stopPropagation(); if (Date.now() - t0 > 1200) artStop(); };
+      r.querySelector('.wrap').addEventListener('click', stop, true);
+      r.querySelector('.wrap').addEventListener('touchend', (e) => { if (!e.touches.length) stop(e); }, true);
+      document.documentElement.appendChild(host);
+      art.el = host;
+      artShow(art.list[0]);
+      art.timer = setInterval(artNext, ART_EVERY_MS);
+    },
+    stop: artStop,
+  };
+
   function start() {
     homeButton();
+    gestures();
     if (window.__tessKbdOff) return;
     watch(document);
     document.body.appendChild(host);
