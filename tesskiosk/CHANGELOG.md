@@ -1,3 +1,6 @@
+## 0.6.1
+- Une caméra affichée en grand reste affichée : pas de retour automatique à l'accueil.
+
 ## 0.6.0
 - Écran éteint la nuit (options screen_off_from / screen_off_to, 00:30 → 07:00 par défaut). Un toucher le rallume 1 minute.
 - Sites ouverts depuis un lien (École Directe…) : bouton 🏠 ou pincement à deux doigts pour revenir au tableau de bord, clavier virtuel disponible, fermeture automatique après le délai d'inactivité.

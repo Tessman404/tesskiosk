@@ -52,7 +52,15 @@ IDLE_JS = """(() => {
     const w = f.contentWindow;
     if (w && !w.__tkHooked) { w.__tkHooked = true; EV.forEach(e => w.addEventListener(e, mark, {capture: true, passive: true})); }
   } catch (e) {} });
-  return [Date.now() - window.__tkIdle, location.pathname];
+  // a camera shown in large (zoom) stays on screen: no return to the home page
+  let zoom = false;
+  const find = (root) => {
+    if (zoom) return;
+    if (root.querySelector('advanced-camera-card[expanded], [data-grand]')) { zoom = true; return; }
+    root.querySelectorAll('*').forEach(el => { if (el.shadowRoot) find(el.shadowRoot); });
+  };
+  try { find(document); } catch (e) {}
+  return [Date.now() - window.__tkIdle, location.pathname, zoom];
 })()"""
 
 GO_HOME_JS = """((p) => {
@@ -391,8 +399,11 @@ def watchdog():
                 continue
             # back to the home page after a while without anybody touching the screen
             if RETURN_HOME_S:
-                idle_ms, path = with_page(lambda p, t: p.eval(IDLE_JS)) or (0, "")
-                if idle_ms >= RETURN_HOME_S * 1000 and (path or "").rstrip("/") not in home_paths:
+                res = list(with_page(lambda p, t: p.eval(IDLE_JS)) or [])
+                idle_ms, path, zoom = (res + [0, "", False][len(res):])[:3]
+                if zoom:
+                    pass  # camera in large: stays as long as wanted
+                elif idle_ms >= RETURN_HOME_S * 1000 and (path or "").rstrip("/") not in home_paths:
                     target_path = sorted(home_paths, key=len)[-1]
                     with_page(lambda p, t: p.eval(GO_HOME_JS % json.dumps(target_path)))
                     log(f"Retour à l'accueil après {RETURN_HOME_S // 60} min sans activité (depuis {path})")
