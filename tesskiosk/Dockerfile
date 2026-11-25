@@ -50,7 +50,7 @@ RUN apk update && apk add --no-cache \
 
 COPY xorg.conf /etc/X11/xorg.conf.tesskiosk
 COPY fonts.conf /etc/fonts/local.conf
-COPY run.sh kiosk.py bt.py /
+COPY run.sh kiosk.py bt.py keyboard.js /
 RUN chmod a+x /run.sh
 
 CMD ["/run.sh"]

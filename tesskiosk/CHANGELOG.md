@@ -1,3 +1,6 @@
+## 0.5.0
+- Clavier virtuel AZERTY : il s'affiche tout seul quand on touche un champ de saisie (option virtual_keyboard).
+
 ## 0.4.2
 - Polices Roboto / Liberation : les pages des extensions (Tessbet…) s'affichent comme sur Mac/Windows.
 

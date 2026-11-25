@@ -195,6 +195,88 @@ def with_page(fn):
             p.close()
 
 
+# --------------------------------------------------------- virtual keyboard
+VIRTUAL_KEYBOARD = os.environ.get("VIRTUAL_KEYBOARD", "true") == "true"
+KEYS = {  # key -> (code, windows virtual key code, text typed)
+    "Backspace": ("Backspace", 8, ""),
+    "Enter": ("Enter", 13, "\r"),
+    "Tab": ("Tab", 9, ""),
+    "Escape": ("Escape", 27, ""),
+    "ArrowLeft": ("ArrowLeft", 37, ""),
+    "ArrowRight": ("ArrowRight", 39, ""),
+}
+
+
+def keyboard_loop():
+    """Keeps one DevTools connection open to the page: it injects keyboard.js
+    in every page load and types the keys the on-screen keyboard sends."""
+    try:
+        with open("/keyboard.js", encoding="utf-8") as f:
+            js = f.read()
+    except OSError as e:
+        log(f"Clavier virtuel indisponible : {e}")
+        return
+    announced = False
+    while True:
+        ws = None
+        try:
+            target = page_target()
+            if not target:
+                time.sleep(3)
+                continue
+            ws = websocket.create_connection(target["webSocketDebuggerUrl"], timeout=20,
+                                             suppress_origin=True,
+                                             http_no_proxy=["127.0.0.1", "localhost"])
+            n = [0]
+
+            def send(method, **params):
+                n[0] += 1
+                ws.send(json.dumps({"id": n[0], "method": method, "params": params}))
+
+            send("Page.enable")
+            send("Runtime.enable")
+            send("Runtime.addBinding", name="tessKbd")
+            send("Page.addScriptToEvaluateOnNewDocument", source=js)
+            send("Runtime.evaluate", expression=js)
+            if not announced:
+                log("Clavier virtuel prêt")
+                announced = True
+            ws.settimeout(None)
+            while True:
+                msg = json.loads(ws.recv())
+                if msg.get("method") != "Runtime.bindingCalled":
+                    continue
+                params = msg.get("params", {})
+                if params.get("name") != "tessKbd":
+                    continue
+                try:
+                    k = json.loads(params.get("payload") or "{}")
+                except ValueError:
+                    continue
+                if k.get("t") == "text" and k.get("v"):
+                    send("Input.insertText", text=str(k["v"])[:20])
+                elif k.get("t") == "key" and k.get("k") in KEYS:
+                    code, vk, text = KEYS[k["k"]]
+                    down = {"key": k["k"], "code": code, "windowsVirtualKeyCode": vk,
+                            "nativeVirtualKeyCode": vk}
+                    if text:
+                        send("Input.dispatchKeyEvent", type="keyDown", text=text,
+                             unmodifiedText=text, **down)
+                    else:
+                        send("Input.dispatchKeyEvent", type="rawKeyDown", **down)
+                    send("Input.dispatchKeyEvent", type="keyUp", **down)
+        except Exception as e:  # Chrome restarted, page closed... reconnect
+            if ws is not None:
+                log(f"Clavier virtuel : reconnexion ({e.__class__.__name__})")
+            time.sleep(3)
+        finally:
+            if ws is not None:
+                try:
+                    ws.close()
+                except Exception:
+                    pass
+
+
 # ----------------------------------------------------------------- session
 def ensure_session(force_login=False):
     def run(p, target):
@@ -357,6 +439,8 @@ def main():
             time.sleep(10)
     log_gpu()
     threading.Thread(target=watchdog, daemon=True).start()
+    if VIRTUAL_KEYBOARD:
+        threading.Thread(target=keyboard_loop, daemon=True).start()
     server = ThreadingHTTPServer(("127.0.0.1", API_PORT), Api)
     log(f"API locale : http://127.0.0.1:{API_PORT}")
     server.serve_forever()
