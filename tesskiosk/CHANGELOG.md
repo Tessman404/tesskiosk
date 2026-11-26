@@ -1,3 +1,6 @@
+## 0.8.1
+- Présence lue directement auprès de Home Assistant (l'écran ne se rallumait pas au retour).
+
 ## 0.8.0
 - Écran éteint quand personne n'est à la maison (option screen_off_when_away, par défaut Thomas et Alexia), rallumé dès que l'un revient. Un toucher le rallume ; il se rééteint après 5 min sans toucher (away_wake_minutes) si personne n'est revenu.
 

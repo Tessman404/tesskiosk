@@ -461,11 +461,6 @@ def is_night():
 AWAY_PERSONS = [x.strip() for x in os.environ.get("AWAY_PERSONS", "").split(",")
                 if x.strip() and x.strip() != "null"]
 AWAY_IDLE_S = int(os.environ.get("AWAY_IDLE_MINUTES", "5") or 5) * 60
-PRESENCE_JS = """(() => { const h = document.querySelector('home-assistant');
-  const st = h && h.hass && h.hass.states; if (!st) return null;
-  const ids = %s; const known = ids.filter(e => st[e]);
-  if (!known.length) return null;
-  return known.some(e => st[e].state === 'home'); })()"""
 
 
 def page_idle_ms():
@@ -475,13 +470,51 @@ def page_idle_ms():
         return 0
 
 
+_api_tok = {"access": None, "until": 0}
+
+
+def api_token():
+    """Access token for the Home Assistant REST API, refreshed from the
+    browser's own session (no new login)."""
+    if _api_tok["access"] and time.time() < _api_tok["until"] - 60:
+        return _api_tok["access"]
+    stored = with_page(lambda p, t: p.eval("localStorage.getItem('hassTokens')"))
+    tok = refresh(json.loads(stored).get("refresh_token", "")) if stored else None
+    if not tok:
+        raise RuntimeError("pas de session Home Assistant")
+    _api_tok["access"] = tok["access_token"]
+    _api_tok["until"] = time.time() + int(tok.get("expires_in", 1800))
+    return _api_tok["access"]
+
+
+_presence_err = [0]
+
+
 def someone_home():
-    """True / False from the person entities, None if unknown."""
+    """True / False from the person entities (asked to Home Assistant directly), None if unknown."""
     if not AWAY_PERSONS:
         return None
     try:
-        return with_page(lambda p, t: p.eval(PRESENCE_JS % json.dumps(AWAY_PERSONS)))
-    except Exception:
+        states = []
+        for e in AWAY_PERSONS:
+            req = urllib.request.Request(f"{HA}/api/states/{e}",
+                                         headers={"Authorization": "Bearer " + api_token()})
+            try:
+                with OPENER.open(req, timeout=10) as r:
+                    states.append(json.loads(r.read()).get("state"))
+            except urllib.error.HTTPError as err:
+                if err.code == 401:
+                    _api_tok["access"] = None
+                    raise
+                if err.code != 404:
+                    raise
+        if not states:
+            return None
+        return any(s == "home" for s in states)
+    except Exception as e:
+        if time.time() - _presence_err[0] > 3600:
+            _presence_err[0] = time.time()
+            log(f"Présence : lecture impossible ({e})")
         return None
 
 
