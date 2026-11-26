@@ -1,5 +1,5 @@
 name: TessKiosk
-version: "0.7.1"
+version: "0.8.0"
 slug: tesskiosk
 description: Affiche un tableau de bord Home Assistant en plein écran avec Chrome, sur l'écran branché au serveur
 url: https://github.com/Tessman404/tesskiosk
@@ -65,6 +65,8 @@ options:
   virtual_keyboard: true
   screen_off_from: "00:30"
   screen_off_to: "07:00"
+  screen_off_when_away: "person.thomas_tesson,person.alexia"
+  away_wake_minutes: 5
 schema:
   ha_username: str
   ha_password: password
@@ -81,3 +83,5 @@ schema:
   virtual_keyboard: bool
   screen_off_from: match(^(([01]?[0-9]|2[0-3]):[0-5][0-9])?$)
   screen_off_to: match(^(([01]?[0-9]|2[0-3]):[0-5][0-9])?$)
+  screen_off_when_away: str?
+  away_wake_minutes: int(1,120)

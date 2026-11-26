@@ -39,6 +39,8 @@ SCREEN_TIMEOUT="$(bashio::config 'screen_timeout')"
 export SCREEN_TIMEOUT
 export SCREEN_OFF_FROM="$(bashio::config 'screen_off_from')"
 export SCREEN_OFF_TO="$(bashio::config 'screen_off_to')"
+export AWAY_PERSONS="$(bashio::config 'screen_off_when_away')"
+export AWAY_IDLE_MINUTES="$(bashio::config 'away_wake_minutes')"
 ROTATE="$(bashio::config 'rotate')"
 HIDE_CURSOR="$(bashio::config 'hide_cursor')"
 HW_VIDEO="$(bashio::config 'hardware_video')"

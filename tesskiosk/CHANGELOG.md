@@ -1,3 +1,6 @@
+## 0.8.0
+- Écran éteint quand personne n'est à la maison (option screen_off_when_away, par défaut Thomas et Alexia), rallumé dès que l'un revient. Un toucher le rallume ; il se rééteint après 5 min sans toucher (away_wake_minutes) si personne n'est revenu.
+
 ## 0.7.1
 - Tableaux remplacés par des œuvres modernes de style scandinave, dessinées sur place (montagnes en aplats, fjords, soleil, sapins, aurores), en plein écran sans bordure ni légende. Plus de téléchargement.
 

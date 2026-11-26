@@ -458,45 +458,93 @@ def is_night():
     return a <= n < b if a <= b else (n >= a or n < b)
 
 
-def night_loop():
-    if not NIGHT_FROM or not NIGHT_TO:
-        return
+AWAY_PERSONS = [x.strip() for x in os.environ.get("AWAY_PERSONS", "").split(",")
+                if x.strip() and x.strip() != "null"]
+AWAY_IDLE_S = int(os.environ.get("AWAY_IDLE_MINUTES", "5") or 5) * 60
+PRESENCE_JS = """(() => { const h = document.querySelector('home-assistant');
+  const st = h && h.hass && h.hass.states; if (!st) return null;
+  const ids = %s; const known = ids.filter(e => st[e]);
+  if (!known.length) return null;
+  return known.some(e => st[e].state === 'home'); })()"""
+
+
+def page_idle_ms():
     try:
-        minutes(NIGHT_FROM), minutes(NIGHT_TO)
-    except ValueError:
-        log(f"Horaires d'extinction invalides : {NIGHT_FROM} / {NIGHT_TO}")
+        return (with_page(lambda p, t: p.eval(IDLE_JS)) or [0])[0]
+    except Exception:
+        return 0
+
+
+def someone_home():
+    """True / False from the person entities, None if unknown."""
+    if not AWAY_PERSONS:
+        return None
+    try:
+        return with_page(lambda p, t: p.eval(PRESENCE_JS % json.dumps(AWAY_PERSONS)))
+    except Exception:
+        return None
+
+
+def screen_normal():
+    if SCREEN_TIMEOUT:
+        t = str(SCREEN_TIMEOUT)
+        xset("s", t)
+        xset("dpms", t, t, t)
+    else:
+        xset("s", "off")
+        xset("-dpms")
+
+
+def night_loop():
+    """Screen off at night, and when nobody (Thomas, Alexia...) is at home.
+    A touch wakes it up; it goes back to sleep after a while without touch."""
+    night_ok = bool(NIGHT_FROM and NIGHT_TO)
+    if night_ok:
+        try:
+            minutes(NIGHT_FROM), minutes(NIGHT_TO)
+        except ValueError:
+            log(f"Horaires d'extinction invalides : {NIGHT_FROM} / {NIGHT_TO}")
+            night_ok = False
+    if night_ok:
+        log(f"Écran éteint chaque nuit de {NIGHT_FROM} à {NIGHT_TO}")
+    if AWAY_PERSONS:
+        log(f"Écran éteint quand personne n'est à la maison ({', '.join(AWAY_PERSONS)}), "
+            f"rallumé au retour ; un toucher le rallume {AWAY_IDLE_S // 60} min")
+    if not night_ok and not AWAY_PERSONS:
         return
-    log(f"Écran éteint chaque nuit de {NIGHT_FROM} à {NIGHT_TO}")
-    state = None
+    night_state, home_state = None, None
     while True:
-        night = is_night()
-        if night != state:
+        night = night_ok and is_night()
+        home = someone_home()
+        away = home is False
+        # --- night
+        if night != night_state:
             if night:
                 xset("s", str(NIGHT_IDLE_S))
                 xset("+dpms")
                 xset("dpms", str(NIGHT_IDLE_S), str(NIGHT_IDLE_S), str(NIGHT_IDLE_S))
                 xset("dpms", "force", "off")
                 log("Nuit : écran éteint (un toucher le rallume 1 minute)")
-            elif state is not None:
-                if SCREEN_TIMEOUT:
-                    t = str(SCREEN_TIMEOUT)
-                    xset("s", t)
-                    xset("dpms", t, t, t)
-                else:
-                    xset("s", "off")
-                    xset("-dpms")
+            elif night_state is not None:
+                screen_normal()
+                if not away:
+                    xset("dpms", "force", "on")
+                    log("Matin : écran rallumé")
+            night_state = night
+        # --- presence
+        if home is not None and home != home_state:
+            if away and not night:
+                log("Personne à la maison : écran éteint")
+                xset("dpms", "force", "off")
+            elif home and home_state is False and not night:
                 xset("dpms", "force", "on")
-                log("Matin : écran rallumé")
-            state = night
-        elif night:
-            # Chrome can keep the screen awake while the camera plays: switch it
-            # off again once nobody has touched it for a minute
-            try:
-                idle_ms = (with_page(lambda p, t: p.eval(IDLE_JS)) or [0])[0]
-                if idle_ms >= NIGHT_IDLE_S * 1000:
-                    xset("dpms", "force", "off")
-            except Exception:
-                pass
+                log("Retour à la maison : écran rallumé")
+            home_state = home
+        # --- back to sleep after a touch (Chrome can keep the screen awake while
+        # the camera plays, so it is switched off again explicitly)
+        limit = NIGHT_IDLE_S if night else (AWAY_IDLE_S if away else None)
+        if limit and page_idle_ms() >= limit * 1000:
+            xset("dpms", "force", "off")
         time.sleep(20)
 
 
