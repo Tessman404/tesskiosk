@@ -208,8 +208,12 @@
 
   // Bouton 🏠 sur les sites ouverts depuis un lien (École Directe…) :
   // ramène au tableau de bord (kiosk.py ferme l'onglet du site)
+  // Le bouton 🏠 apparaît sur les sites ouverts depuis un lien (École Directe…)
+  // et sur les pages de Home Assistant hors du tableau de bord (Music Assistant…).
   function homeButton() {
-    if (!window.__tessHA || location.origin === window.__tessHA) return;
+    if (!window.__tessHA) return;
+    const away = () => location.origin !== window.__tessHA ||
+      (window.__tessHome && !location.pathname.startsWith(window.__tessHome));
     const b = document.createElement('div');
     b.id = 'tesskiosk-home';
     const r = b.attachShadow({ mode: 'open' });
@@ -224,6 +228,9 @@
       else location.href = window.__tessHA;
     }, true);
     document.documentElement.appendChild(b);
+    const sync = () => { b.style.display = away() ? '' : 'none'; };
+    sync();
+    setInterval(sync, 1000);
   }
 
   // ---------------------------------------------------------------- gestes

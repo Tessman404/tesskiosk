@@ -303,7 +303,8 @@ def helpers_loop():
     """Watches the tabs and gives each one the keyboard and the home button."""
     try:
         with open("/keyboard.js", encoding="utf-8") as f:
-            js = ("window.__tessHA=%s;window.__tessKbdOff=%s;\n" %
+            js = ("window.__tessHome=%s;" % json.dumps("/" + DASHBOARD.split("/")[0] if DASHBOARD else "")) + \
+                 ("window.__tessHA=%s;window.__tessKbdOff=%s;\n" %
                   (json.dumps(urllib.parse.urlparse(HA)._replace(path="").geturl()),
                    "false" if VIRTUAL_KEYBOARD else "true")) + f.read()
     except OSError as e:

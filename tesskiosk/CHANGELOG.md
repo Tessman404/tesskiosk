@@ -1,3 +1,6 @@
+## 0.8.3
+- Bouton 🏠 aussi sur les pages Home Assistant hors du tableau de bord (Music Assistant…).
+
 ## 0.8.2
 - Clavier virtuel aussi dans les pages intégrées (Tessfood, Tessbet, Tessvine…).
 

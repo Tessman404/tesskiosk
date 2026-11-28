@@ -1,5 +1,5 @@
 name: TessKiosk
-version: "0.8.2"
+version: "0.8.3"
 slug: tesskiosk
 description: Affiche un tableau de bord Home Assistant en plein écran avec Chrome, sur l'écran branché au serveur
 url: https://github.com/Tessman404/tesskiosk
