@@ -4,7 +4,24 @@
 // envoyées à kiosk.py (binding « tessKbd »), qui les tape dans Chrome comme
 // un vrai clavier. Sans kiosk.py, repli sur document.execCommand.
 (function () {
-  if (window !== window.top) return;           // une seule instance, dans la page principale
+  if (window !== window.top) {
+    // Dans une page intégrée (Tessfood, Tessbet, Tessvine…) : on prévient le clavier
+    // de la page principale quand un champ de saisie reçoit ou perd le focus.
+    const NT = ['checkbox', 'radio', 'button', 'range', 'submit', 'color', 'file', 'hidden', 'reset', 'image'];
+    const ok = (el) => el && el.nodeType === 1 && (el.isContentEditable || (!el.disabled && !el.readOnly &&
+      (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !NT.includes((el.type || 'text').toLowerCase())))));
+    const kbd = () => { try { return window.top.__tessKbd || null; } catch (e) { return null; } };
+    document.addEventListener('focusin', (e) => {
+      const el = e.composedPath ? e.composedPath()[0] : e.target;
+      const k = kbd(); if (k && ok(el)) k.show(el, []);
+    }, true);
+    document.addEventListener('focusout', () => { const k = kbd(); if (k) k.hide(false); }, true);
+    document.addEventListener('pointerup', (e) => {
+      const el = e.composedPath ? e.composedPath()[0] : e.target;
+      const k = kbd(); if (k && ok(el)) setTimeout(() => k.show(el, []), 30);
+    }, true);
+    return;
+  }
   if (window.__tessKbd) return;
   const NO_TEXT = ['checkbox', 'radio', 'button', 'range', 'submit', 'color', 'file', 'hidden', 'reset', 'image'];
 

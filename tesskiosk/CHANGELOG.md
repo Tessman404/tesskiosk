@@ -1,3 +1,6 @@
+## 0.8.2
+- Clavier virtuel aussi dans les pages intégrées (Tessfood, Tessbet, Tessvine…).
+
 ## 0.8.1
 - Présence lue directement auprès de Home Assistant (l'écran ne se rallumait pas au retour).
 
